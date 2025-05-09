@@ -44,17 +44,17 @@ Monitor Input Switch is a desktop utility that allows users to quickly switch th
 
 ```mermaid
 graph TD
-    UI[app_ui.py (Tkinter GUI)]
-    MM[monitor_manager.py (Monitor Abstraction)]
-    CL[control_logic.py (Switch Logic)]
-    PyI[pyinstaller.py (Packaging)]
-    MonLib[monitorcontrol (3rd party)]
-    
-    UI -- "calls" --> MM
-    UI -- "calls" --> CL
-    MM -- "wraps" --> MonLib
-    CL -- "uses" --> MM
-    PyI -- "packages" --> UI
+    UI["app_ui.py<br/>(Tkinter GUI)"]
+    MM["monitor_manager.py<br/>(Monitor Abstraction)"]
+    CL["control_logic.py<br/>(Switch Logic)"]
+    PyI["pyinstaller.py<br/>(Packaging)"]
+    MonLib["monitorcontrol<br/>(3rd party)"]
+
+    UI --> MM
+    UI --> CL
+    MM --> MonLib
+    CL --> MM
+    PyI --> UI
 ```
 
 ## Folder Structure
