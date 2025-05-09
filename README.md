@@ -162,14 +162,8 @@ subprocess.run(command, ...)
 - Exit and Restart buttons at the bottom.
 
 **GUI Layout Example:**
-```
-+-------------------------------------------------------------+
-| [Top Left Monitor]   [Top Right Monitor]                    |
-| [Bottom Left]        [Bottom Right]                         |
-|                                                           |
-|                 [Restart]  [Exit]                          |
-+-------------------------------------------------------------+
-```
+![image](https://github.com/user-attachments/assets/51aa1d0c-d1e2-4dfd-bd2d-a9c374411295)
+
 
 ### Error Handling
 - All monitor operations are wrapped in try/except blocks.
