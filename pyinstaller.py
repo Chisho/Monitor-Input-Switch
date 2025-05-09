@@ -19,6 +19,7 @@ def run_pyinstaller(script_name, icon_path=None):
         '-m', 'PyInstaller',
         '--onefile',
         '--windowed',
+        '--name', 'MonitorInputSwitch',
         f'--add-data=background.jpg{data_sep}.',
         f'--add-data=monitor_icon.jpg{data_sep}.',
     ]
@@ -109,4 +110,4 @@ if __name__ == "__main__":
     # Pillow will attempt to convert it to .ico on Windows if needed.
     icon_to_use = 'icon.webp' # Or 'my_icon.jpg', 'logo.png' etc.
 
-    run_pyinstaller('monitorSwitch.py', icon_to_use)
+    run_pyinstaller('app_ui.py', icon_to_use)

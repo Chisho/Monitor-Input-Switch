@@ -1,7 +1,5 @@
-pip
 setuptools
 wheel
 monitorcontrol
 pillow
-tk
 pyinstaller
