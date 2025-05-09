@@ -50,11 +50,11 @@ graph TD
     PyI[pyinstaller.py (Packaging)]
     MonLib[monitorcontrol (3rd party)]
     
-    UI --"calls"--> MM
-    UI --"calls"--> CL
-    MM --"wraps"--> MonLib
-    CL --"uses"--> MM
-    PyI --"packages"--> UI & assets
+    UI -- "calls" --> MM
+    UI -- "calls" --> CL
+    MM -- "wraps" --> MonLib
+    CL -- "uses" --> MM
+    PyI -- "packages" --> UI
 ```
 
 ## Folder Structure
