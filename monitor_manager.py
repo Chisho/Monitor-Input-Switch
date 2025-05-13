@@ -8,16 +8,24 @@ class MyMonitor:
         self.vcp = {}
         self.model = "N/A"
         self.current_source = "Unknown"
+        self.software_source = None  # For models that don't report source correctly
         self.error = None
         try:
             with self.monitor:
                 self.vcp = self.monitor.get_vcp_capabilities()
                 self.model = self.vcp.get('model', 'N/A')
                 source_obj = self.monitor.get_input_source()
+                print(f"[DEBUG] Monitor {self.index} ({self.model}) get_input_source() raw: {repr(source_obj)}, type: {type(source_obj)}")
                 self.current_source = source_obj.name if hasattr(source_obj, 'name') else str(source_obj)
+                # If this is the buggy model, initialize software_source
+                if self.is_ed32qur():
+                    self.software_source = self.current_source
         except Exception as e:
             self.error = e
             print(f"Error initializing Monitor Index {self.index}: {type(e).__name__}: {e}")
+
+    def is_ed32qur(self):
+        return "ED32" in self.model.upper() and "QUR" in self.model.upper()
 
     def get_model(self):
         return self.model
@@ -25,12 +33,17 @@ class MyMonitor:
     def get_current_source_str(self):
         if self.error: 
             return "Error"
+        if self.is_ed32qur() and self.software_source:
+            # Use software-remembered source for this model
+            print(f"[DEBUG] Monitor {self.index} ({self.model}) using software_source: {self.software_source}")
+            return self.software_source
         
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 with self.monitor:
                     source_obj = self.monitor.get_input_source()
+                    print(f"[DEBUG] Monitor {self.index} ({self.model}) get_input_source() raw: {repr(source_obj)}, type: {type(source_obj)} (get_current_source_str)")
                     self.current_source = source_obj.name if hasattr(source_obj, 'name') else str(source_obj)
                     return self.current_source
             except Exception as e:
@@ -50,6 +63,8 @@ class MyMonitor:
                 print(f"Setting Monitor Index {self.index} ({self.get_model()}) to source '{desired_source_str}'...")
                 self.monitor.set_input_source(desired_source_str)
                 self.current_source = desired_source_str
+                if self.is_ed32qur():
+                    self.software_source = desired_source_str  # Remember last set for this model
                 print(f"Monitor Index {self.index} set successfully.")
                 return True
         except ValueError:
