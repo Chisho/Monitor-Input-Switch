@@ -22,6 +22,16 @@ def run_pyinstaller(script_name, icon_path=None):
         '--name', 'MonitorInputSwitch',
         f'--add-data=background.jpg{data_sep}.',
         f'--add-data=monitor_icon.jpg{data_sep}.',
+        f'--add-data=dark_icon.png{data_sep}.',
+        f'--add-data=smartthings_config.json{data_sep}.',
+        '--hidden-import=smartthings_controller',
+        '--hidden-import=samsung_tizen_controller',
+        '--hidden-import=monitor_manager',
+        '--hidden-import=control_logic',
+        '--hidden-import=requests',
+        '--hidden-import=monitorcontrol',
+        '--hidden-import=samsungtvws',
+        '--hidden-import=websocket',
     ]
 
     # --- Icon Handling Logic ---
@@ -106,8 +116,7 @@ def run_pyinstaller(script_name, icon_path=None):
 
 
 if __name__ == "__main__":
-    # Provide the name of the script and the icon (webp, jpg, png, etc.)
-    # Pillow will attempt to convert it to .ico on Windows if needed.
-    icon_to_use = 'icon.webp' # Or 'my_icon.jpg', 'logo.png' etc.
-
+    # Use dark_icon.png as the application icon
+    icon_to_use = 'dark_icon.png'
+    
     run_pyinstaller('app_ui.py', icon_to_use)
