@@ -5,6 +5,7 @@ import os
 import sys
 import traceback
 import threading
+import ctypes
 
 from monitor_manager import initialize_monitors
 import control_logic
@@ -22,6 +23,7 @@ def resource_path(relative_path):
 def show_loading_screen(root_window):
     for widget in root_window.winfo_children():
         widget.destroy()
+    
     # Show background image if available
     try:
         bg_image_path = resource_path("background.jpg")
@@ -69,6 +71,12 @@ def create_monitor_control(parent_frame, monitor, monitor_image_tk, x, y, displa
     frame = tk.Frame(parent_frame, bg="gray20", width=250, height=180)
     frame.place(x=x, y=y)
     
+    # Check if this is Samsung G8 (SmartThings monitor)
+    is_samsung_g8 = "SAMSUNG" in monitor.get_model().upper() and "SMARTTHINGS" in monitor.get_model().upper()
+    
+    # Offline mode checkbox variable (only for Samsung G8)
+    offline_mode_var = tk.BooleanVar(value=False) if is_samsung_g8 else None
+    
     # Monitor name/model label
     label_text = display_name if display_name else f"Monitor {monitor.index}\n{monitor.get_model()}"
     name_label = tk.Label(frame, text=label_text, 
@@ -105,7 +113,9 @@ def create_monitor_control(parent_frame, monitor, monitor_image_tk, x, y, displa
     
     def on_switch():
         try:
-            success, new_source = control_logic.toggle_monitor_input(monitor)
+            # Pass offline_mode parameter if this is Samsung G8
+            offline = offline_mode_var.get() if offline_mode_var else False
+            success, new_source = control_logic.toggle_monitor_input(monitor, offline_mode=offline)
             if success:
                 update_source_label()
                 switch_btn.config(bg="green")
@@ -119,7 +129,25 @@ def create_monitor_control(parent_frame, monitor, monitor_image_tk, x, y, displa
     
     switch_btn = tk.Button(frame, **btn_config, command=on_switch)
     switch_btn.image = monitor_image_tk
-    switch_btn.place(x=125, y=120, anchor="center")
+    switch_btn_y = 120 if not is_samsung_g8 else 110
+    switch_btn.place(x=125, y=switch_btn_y, anchor="center")
+    
+    # Add offline mode checkbox for Samsung G8
+    if is_samsung_g8:
+        offline_checkbox = tk.Checkbutton(
+            frame, 
+            text="Offline Mode (Local Control)", 
+            variable=offline_mode_var,
+            fg="yellow", 
+            bg="gray30",
+            selectcolor="gray20",
+            activebackground="gray30",
+            activeforeground="white",
+            font=('Arial', 8),
+            bd=0,
+            highlightthickness=0
+        )
+        offline_checkbox.place(x=125, y=155, anchor="center")
     
     # Add event binding for updates
     frame.bind('<<Update>>', lambda e: update_source_label())
@@ -152,12 +180,22 @@ def finish_gui_setup(monitors=None):
         bg_label = tk.Label(root_window, bg="gray50")
         bg_label.place(relwidth=1, relheight=1)
 
+    # Make background draggable
     dragging = False
     x_offset = y_offset = 0
-    def start_move(event): nonlocal x_offset, y_offset, dragging; dragging=True; x_offset=event.x; y_offset=event.y
+    def start_move(event): 
+        nonlocal x_offset, y_offset, dragging
+        dragging = True
+        x_offset = event.x_root - root_window.winfo_x()
+        y_offset = event.y_root - root_window.winfo_y()
     def on_motion(event):
-        if dragging: root_window.geometry(f"+{root_window.winfo_pointerx()-x_offset}+{root_window.winfo_pointery()-y_offset}")
-    def stop_move(event): nonlocal dragging; dragging=False
+        if dragging:
+            x = event.x_root - x_offset
+            y = event.y_root - y_offset
+            root_window.geometry(f"+{x}+{y}")
+    def stop_move(event): 
+        nonlocal dragging
+        dragging = False
     
     bg_label.bind("<ButtonPress-1>", start_move)
     bg_label.bind("<B1-Motion>", on_motion)
@@ -201,7 +239,7 @@ def finish_gui_setup(monitors=None):
 
     # Find specific monitors
     c24g2u_monitor = None
-    ed32qur_monitor = None
+    samsung_g8_monitor = None
     other_monitors = []
     print("Detected monitors:")
     for monitor in identified_monitors_global:
@@ -209,8 +247,8 @@ def finish_gui_setup(monitors=None):
         model = monitor.get_model().upper()
         if "C24G2U" in model:
             c24g2u_monitor = monitor
-        elif ("ED32" in model and "QUR" in model):
-            ed32qur_monitor = monitor
+        elif "SAMSUNG" in model and "SMARTTHINGS" in model:
+            samsung_g8_monitor = monitor
         else:
             other_monitors.append(monitor)
 
@@ -260,11 +298,11 @@ def finish_gui_setup(monitors=None):
         c24g2u_y = margin_y
         create_monitor_control(root_window, c24g2u_monitor, monitor_image_tk, c24g2u_x, c24g2u_y, display_name="Top Right")
 
-    # ED32QUR bottom right
-    if ed32qur_monitor:
-        ed32qur_x = window_width - control_width - margin_x
-        ed32qur_y = window_height - control_height - margin_y
-        create_monitor_control(root_window, ed32qur_monitor, monitor_image_tk, ed32qur_x, ed32qur_y, display_name="Bottom Right")
+    # Samsung G8 bottom right
+    if samsung_g8_monitor:
+        samsung_g8_x = window_width - control_width - margin_x
+        samsung_g8_y = window_height - control_height - margin_y
+        create_monitor_control(root_window, samsung_g8_monitor, monitor_image_tk, samsung_g8_x, samsung_g8_y, display_name="Bottom Right")
 
     def exit_app():
         print("Exiting application.")
@@ -306,12 +344,33 @@ def create_gui():
         root_window = tk.Tk()
         root_window.title("Monitor Input Switcher")
         root_window.geometry("900x506")
-        root_window.overrideredirect(True)
-        # Set taskbar icon on Windows
-        if sys.platform == 'win32':
-            ico_path = resource_path('monitor_icon.ico')
-            if os.path.exists(ico_path):
-                root_window.iconbitmap(ico_path)
+        root_window.resizable(True, True)
+        root_window.minsize(900, 506)
+        root_window.maxsize(900, 506)
+        root_window.configure(bg="#1a1a1a")
+        
+        # Set window and taskbar icon
+        try:
+            icon_path = resource_path('dark_icon.png')
+            if os.path.exists(icon_path):
+                icon_image = Image.open(icon_path)
+                icon_photo = ImageTk.PhotoImage(icon_image)
+                root_window.iconphoto(True, icon_photo)
+        except Exception as e:
+            print(f"Could not set window icon: {e}")
+        
+        # Apply dark title bar after window is visible
+        def apply_dark_titlebar():
+            if sys.platform == 'win32':
+                try:
+                    hwnd = ctypes.windll.user32.GetParent(root_window.winfo_id())
+                    DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                    value = ctypes.c_int(1)
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value))
+                except Exception as e:
+                    print(f"Could not set dark title bar: {e}")
+        
+        root_window.after(100, apply_dark_titlebar)
 
     show_loading_screen(root_window)
 
