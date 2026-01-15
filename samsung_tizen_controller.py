@@ -31,6 +31,9 @@ class SamsungTizenController:
         self.token_file = token_file
         self.token = self._load_token()
         self.tv = None
+        # Track current state (Initialized to DisplayPort/DP1 as requested)
+        # Assuming typical setup: HDMI1 is Left, DP1 is Right
+        self.current_app_state = "DP1" 
         
     def _load_token(self):
         """Load saved token from file."""
@@ -89,65 +92,69 @@ class SamsungTizenController:
     
     def set_input_source(self, source, use_macro=True):
         """
-        Switch monitor input using OSD menu navigation (blind macro strategy).
+        Switch monitor input using '123/Gear' Menu Navigation.
+        Strategy: Gear -> Enter -> Sources Menu -> Move Left/Right -> Enter
         
-        Args:
-            source: Input source name ("HDMI1", "HDMI2", "DP1", "USB-C", etc.)
-            use_macro: If True, use OSD navigation. If False, try direct KEY_SOURCE.
-        
-        Returns:
-            True if successful, False otherwise
+        Assumption: HDMI1 is Left, DP1 is Right.
+        Initialized to DP1.
         """
         if not self.tv:
             print("Not connected. Call connect() first.")
             return False
+            
+        # Normalize: Treat USB-C same as DP1, etc.
+        target = source.upper()
+        if "HDMI" in target: target = "HDMI1" # Simplify to just HDMI vs DP logic
+        if "DP" in target or "USB" in target: target = "DP1"
         
-        # Normalize source name
-        source_upper = source.upper()
+        print(f"Request source: {target} (Current State: {self.current_app_state})")
         
-        if use_macro:
-            return self._switch_via_osd_macro(source_upper)
-        else:
-            # Try direct KEY_SOURCE command (may work on some firmware)
-            return self.send_key("KEY_SOURCE")
-    
-    def _switch_via_osd_macro(self, source):
-        """
-        Navigate OSD menu to switch input source.
-        Sends key sequence: HOME -> LEFT x3 -> DOWN to target -> ENTER
-        
-        Args:
-            source: Input source name (HDMI1, HDMI2, DP1)
-        
-        Returns:
-            True if sequence completed, False on error
-        """
+        if target == self.current_app_state:
+            print("Already on target source (internal state). Skipping macro.")
+            return True
+            
         import time
         
-        # Map source to menu position (number of DOWN presses needed)
-        # Assumes menu order: HDMI1, HDMI2, DisplayPort
-        source_positions = {
-            "HDMI1": {"down": 0, "right": 1},  # First item, one right
-            "HDMI2": {"down": 1, "right": 1},  # Second item, one right  
-            "DP1": {"down": 2, "right": 2},    # Third item, TWO rights
-            "USB-C": {"down": 2, "right": 2},  # Same as DP1
-        }
-        
-        nav_info = source_positions.get(source)
-        if nav_info is None:
-            print(f"Unknown source: {source}")
-            return False
-        
-        down_count = nav_info["down"]
-        right_count = nav_info["right"]
-        
         try:
-            print(f"Navigating OSD to switch to {source}...")
+            print("Executing Input Switch Macro (Gear -> Enter -> Nav -> Enter)...")
             
-            # Step 1: Open home menu
-            self.send_key("KEY_HOME")
-            time.sleep(0.3)
+            # Step 1: Open Quick Menu (Gear/123 button)
+            # KEY_MORE is typically the '123/Color' button on smart remotes
+            self.send_key("KEY_MORE") 
+            time.sleep(1.0) # Wait for menu
             
+            # Step 2: Enter 'Sources' (User says pressing Enter goes to sources)
+            self.send_key("KEY_ENTER")
+            time.sleep(1.0) # Wait for source list to appear
+            
+            # Step 3: Navigation logic
+            # Current theory: HDMI1 (Left) <-> DP1 (Right)
+            
+            # If we are currently at HDMI1 (Left) and want DP1 (Right)
+            if self.current_app_state == "HDMI1" and target == "DP1":
+                print("Moving Right (HDMI1 -> DP1)")
+                self.send_key("KEY_RIGHT")
+                
+            # If we are currently at DP1 (Right) and want HDMI1 (Left)
+            elif self.current_app_state == "DP1" and target == "HDMI1":
+                 print("Moving Left (DP1 -> HDMI1)")
+                 self.send_key("KEY_LEFT")
+            
+            time.sleep(0.5)
+            
+            # Step 4: Select
+            self.send_key("KEY_ENTER")
+            
+            # Update internal state only if success
+            self.current_app_state = target
+            print(f"State updated to: {self.current_app_state}")
+            return True
+            
+        except Exception as e:
+            print(f"Error executing macro: {e}")
+            return False
+
+    def send_key(self, key_code):
             # Step 2: Navigate to sidebar (press LEFT multiple times)
             for _ in range(3):
                 self.send_key("KEY_LEFT")
