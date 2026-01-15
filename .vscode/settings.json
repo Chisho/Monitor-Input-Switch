@@ -1,0 +1,24 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "actionButtons": {
+        "defaultColor": "#ff0034",
+        "cwd": "${workspaceFolder}",
+        "commands": [
+            {
+                "name": "$(tools) Build EXE",
+                "color": "#1177bb",
+                "command": "${workspaceFolder}/.venv/Scripts/python.exe pyinstaller.py",
+                "singleInstance": true,
+                "tooltip": "Build MonitorInputSwitch using PyInstaller"
+            },
+            {
+                "name": "$(plug) Setup Local",
+                "color": "#28a745",
+                "command": "${workspaceFolder}/.venv/Scripts/python.exe setup_local_auth.py",
+                "singleInstance": true,
+                "tooltip": "Pair Monitor via Local Network (No Expiration)"
+            }
+        ]
+    }
+}

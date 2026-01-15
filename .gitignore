@@ -159,3 +159,16 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Local Configuration and Secrets
+local_config.json
+samsung_token.txt
+samsung_g8_token.txt
+smartthings_tokens.json
+smartthings_config.json
+oauth_config.json
+app_config.json
+
+# Tools
+smartthings_cli/
+smartthings.zip

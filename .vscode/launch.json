@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Monitor App",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/app_ui.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Build EXE",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pyinstaller.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Fix Token (Cloud)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/setup_smartthings_token.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Setup Local Control",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/setup_local_auth.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Setup Persistent OAuth",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/setup_smartthings_oauth.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}

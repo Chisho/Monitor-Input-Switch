@@ -72,10 +72,10 @@ def create_monitor_control(parent_frame, monitor, monitor_image_tk, x, y, displa
     frame.place(x=x, y=y)
     
     # Check if this is Samsung G8 (SmartThings monitor)
-    is_samsung_g8 = "SAMSUNG" in monitor.get_model().upper() and "SMARTTHINGS" in monitor.get_model().upper()
+    is_samsung_g8 = "SAMSUNG" in monitor.get_model().upper()
     
     # Offline mode checkbox variable (only for Samsung G8)
-    offline_mode_var = tk.BooleanVar(value=False) if is_samsung_g8 else None
+    offline_mode_var = None # Removed SmartThings support
     
     # Monitor name/model label
     label_text = display_name if display_name else f"Monitor {monitor.index}\n{monitor.get_model()}"
@@ -247,7 +247,7 @@ def finish_gui_setup(monitors=None):
         model = monitor.get_model().upper()
         if "C24G2U" in model:
             c24g2u_monitor = monitor
-        elif "SAMSUNG" in model and "SMARTTHINGS" in model:
+        elif "SAMSUNG" in model: # Matched "SAMSUNG (Local)" or "SAMSUNG (SmartThings)"
             samsung_g8_monitor = monitor
         else:
             other_monitors.append(monitor)

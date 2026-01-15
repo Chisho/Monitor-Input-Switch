@@ -67,7 +67,7 @@ class SamsungTizenController:
                 host=self.ip_address,
                 port=8002,
                 token_file=self.token_file,  # Let library manage token
-                timeout=5,
+                timeout=30,
                 name="MonitorSwitcher"
             )
             
