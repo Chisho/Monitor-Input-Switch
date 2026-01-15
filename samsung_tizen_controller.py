@@ -19,13 +19,14 @@ class SamsungTizenController:
         "USB-C": "org.tizen.viewer.dp1",  # DP1 is usually USB-C on G8
     }
     
-    def __init__(self, ip_address, token_file="samsung_token.txt"):
+    def __init__(self, ip_address, token_file="samsung_token.txt", initial_state="DP1"):
         """
         Initialize Samsung Tizen controller.
         
         Args:
             ip_address: IP address of the Samsung monitor
             token_file: Path to file for storing auth token
+            initial_state: The current known state (HDMI1, DP1, etc.)
         """
         self.ip_address = ip_address
         self.token_file = token_file
@@ -33,7 +34,14 @@ class SamsungTizenController:
         self.tv = None
         # Track current state (Initialized to DisplayPort/DP1 as requested)
         # Assuming typical setup: HDMI1 is Left, DP1 is Right
-        self.current_app_state = "DP1" 
+        self.current_app_state = self._normalize_state(initial_state)
+
+    def _normalize_state(self, state):
+        s = str(state).upper()
+        if "HDMI" in s: return "HDMI1"
+        if "DP" in s or "DISPLAYPORT" in s or "USB" in s: return "DP1"
+        # Default
+        return "DP1" 
         
     def _load_token(self):
         """Load saved token from file."""
@@ -92,60 +100,60 @@ class SamsungTizenController:
     
     def set_input_source(self, source, use_macro=True):
         """
-        Switch monitor input using '123/Gear' Menu Navigation.
-        Strategy: Gear -> Enter -> Sources Menu -> Move Left/Right -> Enter
-        
-        Assumption: HDMI1 is Left, DP1 is Right.
-        Initialized to DP1.
+        Switch monitor input using '123/Gear' Menu Navigation (Relative).
+        Assumption: Cursor starts on current active source.
+        Logic:
+           HDMI -> DP : Move RIGHT
+           DP -> HDMI : Move LEFT
         """
         if not self.tv:
             print("Not connected. Call connect() first.")
             return False
             
-        # Normalize: Treat USB-C same as DP1, etc.
+        # Normalize target
         target = source.upper()
-        if "HDMI" in target: target = "HDMI1" # Simplify to just HDMI vs DP logic
-        if "DP" in target or "USB" in target: target = "DP1"
+        # Normalize internal state just in case
+        current = self.current_app_state.upper()
         
-        print(f"Request source: {target} (Current State: {self.current_app_state})")
+        # Helper to categorize
+        def is_hdmi(s): return "HDMI" in s
+        def is_dp(s): return "DP" in s or "USB" in s or "DISPLAYPORT" in s
         
-        if target == self.current_app_state:
-            print("Already on target source (internal state). Skipping macro.")
-            return True
-            
+        print(f"Request source: {target} (Current State: {current})")
+        
         import time
         
         try:
-            print("Executing Input Switch Macro (Gear -> Enter -> Nav -> Enter)...")
+            print("Executing Input Switch Macro (Relative)...")
             
-            # Step 1: Open Quick Menu (Gear/123 button)
-            # KEY_MORE is typically the '123/Color' button on smart remotes
+            # Step 1: Open Quick Menu
             self.send_key("KEY_MORE") 
-            time.sleep(1.0) # Wait for menu
+            time.sleep(2.0)
             
-            # Step 2: Enter 'Sources' (User says pressing Enter goes to sources)
+            # Step 2: Enter 'Sources'
             self.send_key("KEY_ENTER")
-            time.sleep(1.0) # Wait for source list to appear
+            time.sleep(2.0)
             
-            # Step 3: Navigation logic
-            # Current theory: HDMI1 (Left) <-> DP1 (Right)
+            # Step 3: Relative Navigation
+            # This assumes the cursor is currently ON the active source
             
-            # If we are currently at HDMI1 (Left) and want DP1 (Right)
-            if self.current_app_state == "HDMI1" and target == "DP1":
-                print("Moving Right (HDMI1 -> DP1)")
+            if is_hdmi(current) and is_dp(target):
+                print("Action: Move RIGHT (HDMI -> DP)")
                 self.send_key("KEY_RIGHT")
+                time.sleep(0.5)
                 
-            # If we are currently at DP1 (Right) and want HDMI1 (Left)
-            elif self.current_app_state == "DP1" and target == "HDMI1":
-                 print("Moving Left (DP1 -> HDMI1)")
-                 self.send_key("KEY_LEFT")
+            elif is_dp(current) and is_hdmi(target):
+                print("Action: Move LEFT (DP -> HDMI)")
+                self.send_key("KEY_LEFT")
+                time.sleep(0.5)
             
-            time.sleep(0.5)
-            
+            else:
+                print(f"No movement logic for {current} -> {target}. Selecting current.")
+
             # Step 4: Select
             self.send_key("KEY_ENTER")
             
-            # Update internal state only if success
+            # Update internal state
             self.current_app_state = target
             print(f"State updated to: {self.current_app_state}")
             return True
@@ -153,45 +161,12 @@ class SamsungTizenController:
         except Exception as e:
             print(f"Error executing macro: {e}")
             return False
-
-    def send_key(self, key_code):
-            # Step 2: Navigate to sidebar (press LEFT multiple times)
-            for _ in range(3):
-                self.send_key("KEY_LEFT")
-                time.sleep(0.1)
-            
-            time.sleep(0.2)
-            
-            # Step 3: Navigate down to "Connected Devices" or input list
-            self.send_key("KEY_DOWN")  # Move to Connected Devices
-            time.sleep(0.1)
-            self.send_key("KEY_ENTER")  # Open it
-            time.sleep(0.3)
-            
-            # Step 4: Navigate to specific input
-            if down_count > 0:
-                for _ in range(down_count):
-                    self.send_key("KEY_DOWN")
-                    time.sleep(0.1)
-            
-            # Step 5: Move right to the input item (DP needs 2 rights)
-            for _ in range(right_count):
-                self.send_key("KEY_RIGHT")
-                time.sleep(0.1)
-            
-            # Step 6: Select the input
-            self.send_key("KEY_ENTER")
-            self.send_key("KEY_ENTER")
-            time.sleep(0.2)
-            
-            print(f"✓ OSD navigation sequence complete for {source}")
-            print("  (Monitor should switch in 1-2 seconds)")
-            return True
             
         except Exception as e:
-            print(f"Failed to execute OSD macro: {e}")
+            print(f"Error executing macro: {e}")
             return False
-    
+
+
     def get_installed_apps(self):
         """
         Get list of installed Tizen apps on the monitor.

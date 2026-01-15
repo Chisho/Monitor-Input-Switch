@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import ssl
+import os
 from samsung_tizen_controller import SamsungTizenController
 
 # Configure logging
@@ -38,8 +39,14 @@ if __name__ == "__main__":
         
     print(f"\nAttempting to connect to {ip_address}...")
     
+    # Define Token Path (AppData) to match App behavior
+    app_data_dir = os.path.join(os.environ.get('APPDATA', '.'), 'MonitorInputSwitch')
+    os.makedirs(app_data_dir, exist_ok=True)
+    token_file = os.path.join(app_data_dir, "samsung_g8_token.txt")
+    print(f"Token will be saved to: {token_file}")
+    
     # Try one connection to trigger the Auth popup
-    controller = SamsungTizenController(ip_address)
+    controller = SamsungTizenController(ip_address, token_file=token_file)
     
     print("\n--> Please look at your Monitor now!")
     print("--> Use the remote to select 'Allow' if asked.")

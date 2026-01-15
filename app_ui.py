@@ -74,9 +74,6 @@ def create_monitor_control(parent_frame, monitor, monitor_image_tk, x, y, displa
     # Check if this is Samsung G8 (SmartThings monitor)
     is_samsung_g8 = "SAMSUNG" in monitor.get_model().upper()
     
-    # Offline mode checkbox variable (only for Samsung G8)
-    offline_mode_var = None # Removed SmartThings support
-    
     # Monitor name/model label
     label_text = display_name if display_name else f"Monitor {monitor.index}\n{monitor.get_model()}"
     name_label = tk.Label(frame, text=label_text, 
@@ -113,9 +110,8 @@ def create_monitor_control(parent_frame, monitor, monitor_image_tk, x, y, displa
     
     def on_switch():
         try:
-            # Pass offline_mode parameter if this is Samsung G8
-            offline = offline_mode_var.get() if offline_mode_var else False
-            success, new_source = control_logic.toggle_monitor_input(monitor, offline_mode=offline)
+            # Always pass False (ignored by new monitor_manager anyway)
+            success, new_source = control_logic.toggle_monitor_input(monitor, offline_mode=False)
             if success:
                 update_source_label()
                 switch_btn.config(bg="green")
@@ -129,25 +125,8 @@ def create_monitor_control(parent_frame, monitor, monitor_image_tk, x, y, displa
     
     switch_btn = tk.Button(frame, **btn_config, command=on_switch)
     switch_btn.image = monitor_image_tk
-    switch_btn_y = 120 if not is_samsung_g8 else 110
+    switch_btn_y = 120  # Fixed Y position
     switch_btn.place(x=125, y=switch_btn_y, anchor="center")
-    
-    # Add offline mode checkbox for Samsung G8
-    if is_samsung_g8:
-        offline_checkbox = tk.Checkbutton(
-            frame, 
-            text="Offline Mode (Local Control)", 
-            variable=offline_mode_var,
-            fg="yellow", 
-            bg="gray30",
-            selectcolor="gray20",
-            activebackground="gray30",
-            activeforeground="white",
-            font=('Arial', 8),
-            bd=0,
-            highlightthickness=0
-        )
-        offline_checkbox.place(x=125, y=155, anchor="center")
     
     # Add event binding for updates
     frame.bind('<<Update>>', lambda e: update_source_label())

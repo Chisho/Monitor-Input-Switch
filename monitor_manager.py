@@ -18,56 +18,56 @@ class MyMonitor:
         12: "VGA 1" # Sometimes
     }
 
-    def __init__(self, index, monitor_obj, use_smartthings=False):
+    def __init__(self, index, monitor_obj, is_tizen=False):
         self.index = index
         self.monitor = monitor_obj
         self.vcp = {}
         self.model = "N/A"
         self.current_source = "Unknown"
-        self.software_source = None  # For models that don't report source correctly
+        self.software_source = None
         self.error = None
-        self.use_smartthings = use_smartthings
+        self.is_tizen = is_tizen
+        self.tizen_controller = None
         
         # Load Local Config (Tizen)
         self.local_config = self._load_local_config()
-        self.force_local = self.local_config.get("use_local_control", False)
 
-        # If this monitor was tagged for "SmartThings" (Network Control), check if we use Local Tizen
-        if self.use_smartthings:
-            if self.force_local:
-                self.model = "Samsung (Local)"
-                monitor_ip = self.local_config.get("monitor_ip")
+        # If this is the Tizen Monitor (Samsung G8)
+        if self.is_tizen:
+            self.model = "Samsung OLED G8 (Local)"
+            monitor_ip = self.local_config.get("monitor_ip")
+            
+            if monitor_ip:
+                print(f"[Monitor {self.index}] Initializing Local Tizen Control at {monitor_ip}")
                 
-                if monitor_ip:
-                    print(f"[Monitor {self.index}] Initializing Local Tizen Control at {monitor_ip}")
-                    self.smartthings = SamsungTizenController(monitor_ip) 
-                    # We reuse self.smartthings variable name to keep app_ui compatible 
-                    # (duck typing: both controllers should have get_current_source / set_source)
-                    
-                    # Try to get initial source
-                    try:
-                        # Tizen doesn't always strictly report "HDMI1", but we can try
-                        # For now default to HDMI1 as Tizen query is slow/async
-                        self.current_source = "HDMI1" 
-                    except:
-                        self.current_source = "Unknown"
-                else:
-                    print(f"[Monitor {self.index}] Local control enabled but no IP configured.")
-                    self.error = Exception("Local IP not configured")
-                return
+                # Setup Token Path
+                app_data_dir = os.path.join(os.environ.get('APPDATA', '.'), 'MonitorInputSwitch')
+                os.makedirs(app_data_dir, exist_ok=True)
+                token_file = os.path.join(app_data_dir, "samsung_g8_token.txt")
+                
+                # Initialize Controller (Disconnected initially)
+                # Default source assumption: DP1
+                self.current_source = "DisplayPort 1"
+                
+                # Initialize controller with default state
+                self.tizen_controller = SamsungTizenController(
+                    monitor_ip, 
+                    token_file=token_file, 
+                    initial_state=self.current_source
+                )
+                
             else:
-                 # Logic for SmartThings (Removed) or fallback
-                print(f"[Monitor {self.index}] Network control requested but no method configured.")
-                self.model = "Samsung (Unknown)"
+                print(f"[Monitor {self.index}] Tizen control enabled but no IP configured.")
+                self.error = Exception("Local IP not configured in local_config.json")
             return
         
-        # Normal VCP initialization for non-SmartThings monitors
+        # Normal VCP initialization for standard monitors
         try:
             with self.monitor:
                 self.vcp = self.monitor.get_vcp_capabilities()
                 self.model = self.vcp.get('model', 'N/A')
                 source_obj = self.monitor.get_input_source()
-                print(f"[DEBUG] Monitor {self.index} ({self.model}) get_input_source() raw: {repr(source_obj)}, type: {type(source_obj)}")
+                # print(f"[DEBUG] Monitor {self.index} ({self.model}) get_input_source() raw: {repr(source_obj)}")
                 
                 # Handle raw int codes or Enum members
                 if isinstance(source_obj, int):
@@ -85,8 +85,6 @@ class MyMonitor:
             print(f"Error initializing Monitor Index {self.index}: {type(e).__name__}: {e}")
 
     def _load_local_config(self):
-        import json
-        import os
         try:
             if os.path.exists("local_config.json"):
                 with open("local_config.json", 'r') as f:
@@ -102,23 +100,25 @@ class MyMonitor:
         return self.model
 
     def get_current_source_str(self):
-        # Use SmartThings placeholder
-        if self.use_smartthings:
+        # Tizen Monitor: Return tracked state
+        if self.is_tizen:
+             if self.tizen_controller:
+                 # Map 'DP1' to 'DisplayPort 1' if needed to match UI expectations? 
+                 # Or keep 'DP1' as the internal string. 
+                 # The UI might display just 'DP1', checking app_ui later.
+                 return self.tizen_controller.current_app_state
              return self.current_source
 
         if self.error: 
             return "Error"
         if self.is_ed32qur() and self.software_source:
-            # Use software-remembered source for this model
-            print(f"[DEBUG] Monitor {self.index} ({self.model}) using software_source: {self.software_source}")
-            return self.software_source
+             return self.software_source
         
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 with self.monitor:
                     source_obj = self.monitor.get_input_source()
-                    print(f"[DEBUG] Monitor {self.index} ({self.model}) get_input_source() raw: {repr(source_obj)}, type: {type(source_obj)} (get_current_source_str)")
                     
                     if isinstance(source_obj, int):
                          self.current_source = self.VCP_INPUT_CODES.get(source_obj, str(source_obj))
@@ -131,80 +131,52 @@ class MyMonitor:
             except Exception as e:
                 if attempt < max_retries - 1:
                     import time
-                    time.sleep(1)  # Wait before retry
+                    time.sleep(1)
                     continue
-                print(f"Error checking source for Monitor {self.index}: {e}")
                 return "Unknown (Error checking)"
 
     def set_input_source(self, desired_source_str, offline_mode=False):
-        # Use local WebSocket control if offline_mode is enabled OR if force_local is enabled
-        if self.use_smartthings and (offline_mode or self.force_local):
-            print(f"Setting Monitor Index {self.index} to source '{desired_source_str}' via LOCAL WebSocket...")
+        # Tizen Control
+        if self.is_tizen and self.tizen_controller:
+            print(f"Setting Tizen Monitor {self.index} to '{desired_source_str}'...")
             try:
-                from samsung_tizen_controller import SamsungTizenController
-                import os
+                # Update controller's knowledge of current state before action
+                # We update the controller state with what we THINK is current, if needed.
+                # Actually, the controller maintains state.
                 
-                # Use configured IP if available
-                monitor_ip = self.local_config.get("monitor_ip", "192.168.0.52")
-
-                # Save token in Windows AppData folder (proper location for app data)
-                app_data_dir = os.path.join(os.environ.get('APPDATA', '.'), 'MonitorInputSwitch')
-                os.makedirs(app_data_dir, exist_ok=True)  # Create folder if it doesn't exist
-                token_file = os.path.join(app_data_dir, "samsung_g8_token.txt")
-                print(f"[DEBUG] Token file location: {token_file}")
-                
-                controller = SamsungTizenController(monitor_ip, token_file=token_file)
-                if controller.connect():
-                    success = controller.set_input_source(desired_source_str)
-                    controller.disconnect()
+                if self.tizen_controller.connect():
+                    success = self.tizen_controller.set_input_source(desired_source_str)
+                    self.tizen_controller.disconnect()
                     if success:
                         self.current_source = desired_source_str
-                        print(f"Monitor Index {self.index} set successfully via local WebSocket.")
+                        print(f"Tizen Monitor {self.index} switched successfully.")
                     return success
                 else:
-                    print(f"Failed to connect to monitor via local WebSocket")
+                    print("Failed to connect to Tizen monitor.")
                     return False
             except Exception as e:
-                print(f"Error using local WebSocket control: {e}")
-                import traceback
+                print(f"Error controlling Tizen monitor: {e}")
                 traceback.print_exc()
                 return False
         
-        # Use Tizen/SmartThings Controller (Unified)
-        if self.use_smartthings and hasattr(self, 'smartthings') and self.smartthings:
-            print(f"Setting Monitor Index {self.index} (Samsung) to source '{desired_source_str}'...")
-            # Detect if it's the Tizen controller (it has set_source instead of set_input_source in some versions, check compatibility)
-            # Actually both usually use set_source or similar. Let's check samsung_tizen_controller.py if needed.
-            # Assuming set_input_source is the standard interface we built.
-            
-            try:
-                success = self.smartthings.set_input_source(desired_source_str)
-                if success:
-                    self.current_source = desired_source_str
-                    print(f"Monitor Index {self.index} set successfully via Network Controller.")
-                return success
-            except Exception as e:
-                 print(f"Error setting source via network: {e}")
-                 return False
-        
+        # Standard VCP Control
+        return self._set_vcp_source(desired_source_str)
+
+    def _set_vcp_source(self, desired_source_str):
         if self.error:
-            print(f"Monitor Index {self.index} ({self.get_model()}) had an initialization error. Cannot set source.")
+            print(f"Monitor {self.index} has error state.")
             return False
+            
         try:
             with self.monitor:
-                print(f"Setting Monitor Index {self.index} ({self.get_model()}) to source '{desired_source_str}'...")
+                print(f"Setting Monitor {self.index} ({self.model}) to '{desired_source_str}' via VCP...")
                 self.monitor.set_input_source(desired_source_str)
                 self.current_source = desired_source_str
                 if self.is_ed32qur():
-                    self.software_source = desired_source_str  # Remember last set for this model
-                print(f"Monitor Index {self.index} set successfully.")
+                    self.software_source = desired_source_str
                 return True
-        except ValueError:
-             print(f"ERROR: Monitor Index {self.index} ({self.get_model()}) does not support source name '{desired_source_str}'. Check available sources.")
-             return False
         except Exception as e:
-            print(f"ERROR setting source for Monitor Index {self.index} ({self.get_model()}): {e}")
-            import traceback
+            print(f"VCP Error Monitor {self.index}: {e}")
             traceback.print_exc()
             return False
 
@@ -214,23 +186,20 @@ def initialize_monitors():
     monitor_handles = get_monitors()
 
     if not monitor_handles:
-        print("!!! No monitors detected by monitorcontrol library.")
+        print("!!! No monitors detected.")
     else:
         for i, monitor_obj in enumerate(monitor_handles):
             print(f"\nProcessing Monitor Index: {i}")
             
-            # Check if this monitor should use SmartThings (monitor index 3 is the G8)
-            use_smartthings = (i == 3)
+            # Configure Index 3 as the Tizen/Samsung Monitor
+            is_tizen = (i == 3)
             
-            mon = MyMonitor(i, monitor_obj, use_smartthings=use_smartthings)
+            mon = MyMonitor(i, monitor_obj, is_tizen=is_tizen)
             identified_monitors_list.append(mon)
+            
             print(f"  Index: {mon.index}")
-            if mon.error:
-                print(f"  Error: Could not fully query this monitor.")
-                print(f"         Details: {type(mon.error).__name__}: {mon.error}")
-            else:
-                print(f"  Model: {mon.get_model()}")
-                print(f"  Current Source: {mon.get_current_source_str()}")
+            print(f"  Model: {mon.get_model()}")
+            print(f"  Source: {mon.get_current_source_str()}")
 
     print("\n--- Monitor Detection Complete ---")
     print(f"Found {len(identified_monitors_list)} monitor(s).")

@@ -1,6 +1,6 @@
 # Monitor Input Switch
 
-A desktop application for switching monitor input sources (HDMI/DisplayPort) with a modern GUI. Built with Python, featuring hybrid control via DDC/CI (VCP) and Samsung SmartThings API for monitors without VCP support.
+A desktop application for switching monitor input sources (HDMI/DisplayPort) with a modern GUI. Built with Python, featuring hybrid control via DDC/CI (VCP) and Local Tizen API for Samsung monitors.
 
 ---
 
@@ -13,12 +13,12 @@ A desktop application for switching monitor input sources (HDMI/DisplayPort) wit
   - [app_ui.py (GUI)](#app_uipy-gui)
   - [monitor_manager.py (Monitor Abstraction)](#monitor_managerpy-monitor-abstraction)
   - [control_logic.py (Input Switching Logic)](#control_logicpy-input-switching-logic)
-  - [smartthings_controller.py (Samsung Cloud API)](#smartthings_controllerpy-samsung-cloud-api)
+  - [samsung_tizen_controller.py (Samsung Local API)](#samsung_tizen_controllerpy-samsung-local-api)
   - [pyinstaller.py (Packaging)](#pyinstallerpy-packaging)
 - [Implementation Details](#implementation-details)
   - [Monitor Detection](#monitor-detection)
   - [Input Switching](#input-switching)
-  - [SmartThings Integration](#smartthings-integration)
+  - [Samsung Local Integration](#samsung-local-integration)
   - [GUI Layout & User Experience](#gui-layout--user-experience)
   - [Error Handling](#error-handling)
   - [Packaging with PyInstaller](#packaging-with-pyinstaller)
@@ -34,14 +34,14 @@ A desktop application for switching monitor input sources (HDMI/DisplayPort) wit
 Monitor Input Switch is a desktop utility that allows users to quickly switch the input source of their connected monitors (e.g., from HDMI to DisplayPort) using a graphical interface. It is especially useful for multi-monitor setups and KVM-like workflows.
 
 **Hybrid Control Approach:**
-- **VCP/DDC-CI**: Local USB control for compatible monitors (instant, works offline)
-- **SmartThings Cloud API**: For Samsung monitors without VCP support (requires internet)
+- **VCP/DDC-CI**: Local USB control for compatible monitors (instant)
+- **Samsung Tizen**: Local network control for Samsung Smart Monitors (offline, no cloud)
 
 ## Features
 - Detects all connected monitors and displays their model names.
 - Allows toggling input source (HDMI1/DP1) per monitor.
-- **Hybrid control**: VCP for compatible monitors, SmartThings API for Samsung displays.
-- **Dual-mode Samsung control**: Fast cloud API (~2s) or offline local WebSocket (~14s).
+- **Hybrid control**: VCP for compatible monitors, Local Tizen API for Samsung displays.
+- **Samsung Local Control**: Offline WebSocket control (~4-5s delay for macro execution).
 - Native Windows title bar with dark mode integration.
 - Windows snap support (Win+Left/Right/Up/Down arrows).
 - Appears in Windows taskbar with custom dark icon.
@@ -50,8 +50,6 @@ Monitor Input Switch is a desktop utility that allows users to quickly switch th
 - Restart and Exit controls.
 - Windows support (primary platform), with potential Linux/macOS compatibility for VCP monitors.
 
-*Note: SmartThings cloud mode requires internet connection and Samsung account setup. Local offline mode works without internet but is slower. See [SMARTTHINGS_SETUP.md](SMARTTHINGS_SETUP.md) for details.
-
 ## Architecture Diagram
 
 ```mermaid
@@ -59,16 +57,16 @@ graph TD
     UI["app_ui.py<br/>(Tkinter GUI)"]
     MM["monitor_manager.py<br/>(Monitor Abstraction)"]
     CL["control_logic.py<br/>(Switch Logic)"]
-    ST["smartthings_controller.py<br/>(Samsung Cloud API)"]
+    TZ["samsung_tizen_controller.py<br/>(Local Tizen API)"]
     PyI["pyinstaller.py<br/>(Packaging)"]
     MonLib["monitorcontrol<br/>(VCP/DDC-CI)"]
-    API["SmartThings API<br/>(Cloud)"]
+    TVWS["samsungtvws<br/>(WebSocket Lib)"]
 
     UI --> MM
     UI --> CL
     MM --> MonLib
-    MM --> ST
-    ST --> API
+    MM --> TZ
+    TZ --> TVWS
     CL --> MM
     PyI --> UI
 ```
@@ -79,15 +77,13 @@ graph TD
 ├── app_ui.py                      # Main GUI application (custom title bar, taskbar integration)
 ├── monitor_manager.py             # Monitor abstraction and detection
 ├── control_logic.py               # Input switching logic
-├── smartthings_controller.py      # Samsung SmartThings cloud API integration
 ├── samsung_tizen_controller.py    # Local WebSocket control (offline mode)
-├── smartthings_config.json        # SmartThings credentials (user-created)
+├── local_config.json              # Local Monitor IP configuration
 ├── pyinstaller.py                 # Build script for packaging
 ├── background.jpg                 # GUI background image
 ├── monitor_icon.jpg               # Monitor icon for buttons
 ├── dark_icon.png                  # Application icon (window/taskbar)
 ├── requirements.txt               # Python dependencies
-├── SMARTTHINGS_SETUP.md           # SmartThings setup guide
 ├── README.md                      # This file
 ├── dist/                          # Built executables (after packaging)
 ├── .venv/                         # Virtual environment
@@ -103,7 +99,6 @@ graph TD
 - Handles layout, monitor controls, and visual feedback.
 - Loads background and icons dynamically (dark_icon.png for window, monitor_icon.jpg for buttons).
 - Calls monitor_manager to detect monitors and control_logic to switch inputs.
-- For Samsung G8: Displays "Offline Mode" checkbox to choose between cloud (fast) and local (slow but offline) control.
 
 **Key snippet:**
 ```python
@@ -121,51 +116,43 @@ def create_gui():
 
 ### monitor_manager.py (Monitor Abstraction)
 - Wraps the monitorcontrol library for VCP/DDC-CI monitors.
-- Integrates SmartThings controller for Samsung monitors (cloud mode).
 - Integrates samsung_tizen_controller for local WebSocket control (offline mode).
 - Provides MyMonitor class with unified interface regardless of control method.
 - Automatically detects and uses appropriate control method per monitor.
-- Supports offline_mode parameter for Samsung monitors to bypass internet dependency.
-- Token persistence in Windows AppData for seamless offline mode experience.
+- Token persistence in Windows AppData for seamless local control experience.
 - Handles errors and retries.
 
 **Key snippet:**
 ```python
 class MyMonitor:
     def set_input_source(self, desired_source_str, offline_mode=False):
-        if self.use_smartthings:
-            if offline_mode:
-                # Use local WebSocket control (slow but offline)
-                return self._samsung_tizen_switch(desired_source_str)
-            else:
-                # Use SmartThings cloud API (fast, requires internet)
-                return self.smartthings.set_input_source(desired_source_str)
+        if self.is_tizen:
+            # Use local WebSocket control (offline)
+            return self.tizen_controller.set_input_source(desired_source_str)
         else:
             # Standard VCP control
             with self.monitor:
                 self.monitor.set_input_source(desired_source_str)
 ```
 
-### smartthings_controller.py (Samsung Cloud API)
-- Handles Samsung SmartThings REST API communication.
-- Provides input source querying and switching for Samsung monitors.
-- Loads credentials from `smartthings_config.json`.
-- Translates between standard input names (HDMI1, DP1) and SmartThings format.
+### samsung_tizen_controller.py (Samsung Local API)
+- Handles Samsung Tizen WebSocket communication (port 8002).
+- Uses navigation macros (Right/Left) to switch inputs on monitors that don't support direct source keys.
+- Maintains internal state tracking to know current source (HDMI/DP).
+- Manages authentication tokens automatically.
 
 **Key snippet:**
 ```python
-class SmartThingsController:
+class SamsungTizenController:
     def set_input_source(self, source):
-        st_source = self._to_smartthings_source(source)  # e.g., "Display Port"
-        payload = {
-            "commands": [{
-                "component": "main",
-                "capability": "samsungvd.mediaInputSource",
-                "command": "setInputSource",
-                "arguments": [st_source]
-            }]
-        }
-        response = requests.post(url, headers=headers, json=payload)
+        # ... macro logic ...
+        self.send_key("KEY_MORE") 
+        time.sleep(2.0)
+        self.send_key("KEY_ENTER")
+        # Navigate relative to current state
+        if current == "HDMI1" and target == "DP1":
+             self.send_key("KEY_RIGHT")
+        self.send_key("KEY_ENTER")
 ```
 
 ### control_logic.py (Input Switching Logic)
@@ -235,7 +222,6 @@ subprocess.run(command, ...)
 - Appears in Windows taskbar despite borderless design (Win32 API integration).
 - Draggable via custom title bar or background image (with proper offset calculation).
 - Monitors are arranged in a 2x2 grid (top/bottom left/right), with swap functionality for left monitors.
-- Samsung G8 shows "Offline Mode (Local Control)" checkbox to toggle between cloud and local control.
 - Custom background and icons for a modern look.
 - Exit and Restart buttons at the bottom.
 
@@ -275,9 +261,14 @@ subprocess.run(command, ...)
    pip install -r requirements.txt
    ```
 
-5. **Setup SmartThings (if using Samsung monitors):**
-   - Follow [SMARTTHINGS_SETUP.md](SMARTTHINGS_SETUP.md)
-   - Create `smartthings_config.json` with your credentials
+5. **Setup Samsung Monitor (Optional):**
+   - Run the local auth setup wizard:
+     ```sh
+     python setup_local_auth.py
+     ```
+   - Enter your monitor's IP address.
+   - Click "Allow" on the monitor popup.
+   - This creates `local_config.json` and saves the auth token.
 
 ## Example Usage
 
@@ -296,31 +287,28 @@ subprocess.run(command, ...)
    - Click the "Switch Input" button for any monitor in the GUI.
    - Button turns green on success, orange/red on error.
    - VCP monitors: Instant switching
-   - SmartThings monitors: 1-2 second delay (cloud API)
+   - Samsung monitors: ~4-5 second delay (OSD macro)
 
 ## Troubleshooting & FAQ
 
 - **Q: No monitors detected?**
   - **VCP monitors**: Ensure DDC/CI is enabled in monitor OSD settings.
-  - Try running as administrator (Windows) or with sudo (Linux).
+  - Try running as administrator (Windows).
   - Check that the `monitorcontrol` library supports your hardware.
-  - **Samsung monitors**: Ensure SmartThings is configured and monitor is online.
+  - **Samsung monitors**: Ensure `local_config.json` is configured correctly.
 
 - **Q: Input not switching?**
   - **VCP monitors**: Not all monitors support input switching via DDC/CI.
-  - **SmartThings monitors**: Check internet connection and credentials.
+  - **Samsung monitors**: Check local network connection.
+    - Run `python setup_local_auth.py` to re-pair if needed.
+    - Ensure monitor is ON and connected to the same network.
   - Check the console/terminal for error messages.
   - Verify monitor supports the target input source.
 
-- **Q: SmartThings monitor not working?**
-  - Verify `smartthings_config.json` exists with valid credentials.
-  - Test with the SmartThings app to ensure monitor is responsive.
-  - Check that monitor is connected to network and internet.
-  - See [SMARTTHINGS_SETUP.md](SMARTTHINGS_SETUP.md) for troubleshooting.
-
-- **Q: Does SmartThings work offline?**
-  - No, SmartThings integration requires internet to reach Samsung cloud API.
-  - VCP/DDC-CI monitors work completely offline.
+- **Q: Samsung monitor not working?**
+  - Verify `local_config.json` exists with valid IP.
+  - Run `python setup_local_auth.py` to refresh the token.
+  - Check that monitor is connected to network.
 
 - **Q: App window not draggable?**
   - Drag the background image area, not the controls.
@@ -332,11 +320,9 @@ subprocess.run(command, ...)
 ## Credits
 - Developed by MCDIX incorporated
 - **VCP Control**: [monitorcontrol](https://github.com/newAM/monitorcontrol)
-- **SmartThings Integration**: Samsung SmartThings REST API v1
+- **Samsung Local Control**: [samsungtvws](https://github.com/xchwarze/samsung-tv-ws-api)
 - **GUI**: Tkinter, Pillow
-- **HTTP**: requests library
 - **Packaging**: PyInstaller
-- Special thanks to the [ha-samsungtv-smart](https://github.com/ollo69/ha-samsungtv-smart) project for SmartThings API insights
 
 ---
 

@@ -172,3 +172,5 @@ app_config.json
 # Tools
 smartthings_cli/
 smartthings.zip
+
+token.txt
